@@ -1,38 +1,73 @@
-/*
-    This sketch establishes a TCP connection to a "quote of the day" service.
-    It sends a "hello" message, and then prints received data.
-*/
+/*  Open the Door on a later time. Jobin Augustine */
 
 #include <ESP8266WiFi.h>
+#include <WiFiUdp.h>  //UDP communication with NTP servers
 
+/* D1 mini clone has LED connected to +ve, define according to behaviour */
+#define LEDON 0x0
+#define LEDOFF 0x1
+
+/*WiFi credentials*/
 #define ssid "ocean"
 #define password "20010604"
 
+/*Basic Infra for communicating with NTP server */
+unsigned int localPort = 2390;  // local port to listen for UDP packets
+const char* ntpServerName = "in.pool.ntp.org";   // NTP Server for India.
+//const char* ntpServerName = "time.nist.gov";   
+IPAddress timeServerIP;  // Resolved IP address of the NTP server
+const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
+byte packetBuffer[NTP_PACKET_SIZE];  // buffer to hold incoming and outgoing packets
+WiFiUDP udp; // A UDP instance to let us send and receive packets over UDP
+
+
 void setup() {
-  Serial.begin(9600);
-  pinMode(LED_BUILTIN, OUTPUT);
-  // We start by connecting to a WiFi network
+  Serial.begin(9600);     //Baud rate for Serial monitor
+  pinMode(LED_BUILTIN, OUTPUT);  //LED as Output pin
 
   Serial.println();
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
-  /* Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,
-     would try to act as both a client and an access-point and could cause
-     network-issues with your other WiFi-devices on your WiFi-network. */
-  WiFi.mode(WIFI_STA);
+  /* Start Wifi-Client */
+  blink();
+  WiFi.mode(WIFI_STA); //Explicitly set the ESP8266 to be a WiFi-client, otherwise, it by default,would try to act as both a client and an access-point and could cause network-issues with your other WiFi-devices on your WiFi-network. 
   WiFi.begin(ssid, password);
-  
-  digitalWrite(LED_BUILTIN, LOW);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(200);
     Serial.print(".");
   }
   Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.println("WiFi connected. IP address:");
   Serial.println(WiFi.localIP());
+  blink();  
+
+  /*Initialize the UPD */
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
+
+  WiFi.hostByName(ntpServerName, timeServerIP);   //resolve to a random NTP server ip
+  Serial.print("Time Server IP =");
+  Serial.println(timeServerIP);
+  sendNTPpacket(timeServerIP);   //Send a request to NTP server
+  delay(2000);  //Wait for 2 seconds for NTP server response.
+  int cb = udp.parsePacket();
+  if (!cb) {
+    Serial.println("No response from NTP Server :( ");
+  } else {
+    Serial.printf("packet received, length=%d \n",cb);
+    //Serial.println(cb);
+    udp.read(packetBuffer, NTP_PACKET_SIZE);  // read the packet into the buffer
+
+    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);  // the timestamp starts at byte 40 of the received packet and is four bytes,
+    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);  //  or two words, long. First, esxtract the two words:
+    unsigned long secsSince1900 = highWord << 16 | lowWord;   // combine the four bytes (two words) into a long integer
+    Serial.print("NTP SUCCESS!. Seconds since Jan 1 1900 = ");  // this is NTP time (seconds since Jan 1 1900):
+    Serial.println(secsSince1900);
+  }  
 }
 
 void loop() {
@@ -40,8 +75,42 @@ void loop() {
   //Serial.println(timeout);
   Serial.printf("Time : %ld : ", timeout);
   Serial.println("Its working");
-  digitalWrite(LED_BUILTIN, LOW); 
+  digitalWrite(LED_BUILTIN, LEDON); 
   delay(100); 
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(1000) ;
+  digitalWrite(LED_BUILTIN, LEDOFF);
+  delay(2000) ;
+}
+
+void blink() {
+  digitalWrite(LED_BUILTIN, LEDON);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LEDOFF);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LEDON);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LEDOFF);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LEDON);
+  delay(100);
+  digitalWrite(LED_BUILTIN, LEDOFF);
+  delay(100);
+}
+
+void sendNTPpacket(IPAddress& address) {
+  Serial.println("sending NTP packet...");
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);   // set all bytes in the buffer to 0
+  // Initialize values needed to form NTP request
+  packetBuffer[0] = 0b11100011;  // LI, Version, Mode
+  packetBuffer[1] = 0;           // Stratum, or type of clock
+  packetBuffer[2] = 6;           // Polling Interval
+  packetBuffer[3] = 0xEC;        // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12] = 49;
+  packetBuffer[13] = 0x4E;
+  packetBuffer[14] = 49;
+  packetBuffer[15] = 52;
+
+  udp.beginPacket(address, 123);  // NTP requests are to port 123
+  udp.write(packetBuffer, NTP_PACKET_SIZE); // all NTP fields have been given values, now we can send a packet requesting a timestamp:
+  udp.endPacket();
 }
