@@ -1,5 +1,4 @@
-/*  Open the Door on a later time. Jobin Augustine */
-
+/*  Open the Door after late night. Jobin Augustine */
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>  //UDP communication with NTP servers
 
@@ -14,12 +13,12 @@
 /*Basic Infra for communicating with NTP server */
 unsigned int localPort = 2390;  // local port to listen for UDP packets
 const char* ntpServerName = "in.pool.ntp.org";   // NTP Server for India.
-//const char* ntpServerName = "time.nist.gov";   
 IPAddress timeServerIP;  // Resolved IP address of the NTP server
 const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
 byte packetBuffer[NTP_PACKET_SIZE];  // buffer to hold incoming and outgoing packets
 WiFiUDP udp; // A UDP instance to let us send and receive packets over UDP
-
+unsigned long secsSince1900;  //Response from NTP server
+unsigned long epoch, startepoch ;  //Converted UNIX epoch
 
 void setup() {
   Serial.begin(9600);     //Baud rate for Serial monitor
@@ -64,24 +63,26 @@ void setup() {
 
     unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);  // the timestamp starts at byte 40 of the received packet and is four bytes,
     unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);  //  or two words, long. First, esxtract the two words:
-    unsigned long secsSince1900 = highWord << 16 | lowWord;   // combine the four bytes (two words) into a long integer
+    secsSince1900 = highWord << 16 | lowWord;   // combine the four bytes (two words) into a long integer
     Serial.print("NTP SUCCESS!. Seconds since Jan 1 1900 = ");  // this is NTP time (seconds since Jan 1 1900):
     Serial.println(secsSince1900);
+    startepoch = secsSince1900 - 2208988800UL; //Substract 70 years for converting it to unix epoch
   }  
 }
 
 void loop() {
   unsigned long timeout = millis();
-  //Serial.println(timeout);
-  Serial.printf("Time : %ld : ", timeout);
-  Serial.println("Its working");
+  //Serial.printf("Epoch :%lu\n",epoch);
+  epoch = startepoch + (timeout/1000);
+  Serial.printf("The UTC time is %lu:%lu:%lu\n", (epoch % 86400L) / 3600, (epoch % 3600) / 60, epoch % 60);
   digitalWrite(LED_BUILTIN, LEDON); 
   delay(100); 
   digitalWrite(LED_BUILTIN, LEDOFF);
   delay(2000) ;
 }
 
-void blink() {
+/* blink LED 3 TIMES */
+void blink() {   
   digitalWrite(LED_BUILTIN, LEDON);
   delay(100);
   digitalWrite(LED_BUILTIN, LEDOFF);
@@ -96,6 +97,7 @@ void blink() {
   delay(100);
 }
 
+/* send NTP packet to the address of the NTP server */
 void sendNTPpacket(IPAddress& address) {
   Serial.println("sending NTP packet...");
   memset(packetBuffer, 0, NTP_PACKET_SIZE);   // set all bytes in the buffer to 0
