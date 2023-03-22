@@ -22,7 +22,9 @@ unsigned long epoch, startepoch ;  //Converted UNIX epoch
 
 void setup() {
   Serial.begin(9600);     //Baud rate for Serial monitor
-  pinMode(LED_BUILTIN, OUTPUT);  //LED as Output pin
+  pinMode(LED_BUILTIN, OUTPUT);  //LED as Output pin which is GPIO2 (D4)
+  pinMode(5, OUTPUT);  //D1	GPIO5 as output for door lock solinoid
+  digitalWrite(5, LOW);  //Make sure that solinoid is not active
 
   Serial.println();
   Serial.println();
@@ -75,10 +77,13 @@ void loop() {
   //Serial.printf("Epoch :%lu\n",epoch);
   epoch = startepoch + (timeout/1000);
   Serial.printf("The UTC time is %lu:%lu:%lu\n", (epoch % 86400L) / 3600, (epoch % 3600) / 60, epoch % 60);
-  digitalWrite(LED_BUILTIN, LEDON); 
-  delay(100); 
+  digitalWrite(LED_BUILTIN, LEDON);
+  if (timeout > 14400000UL || ((epoch % 86400L) > 20 && (epoch % 3600) > 30))   //Trigger the Door unlock if conditions met
+    digitalWrite(5, HIGH);
+  delay(1000); 
   digitalWrite(LED_BUILTIN, LEDOFF);
-  delay(2000) ;
+  digitalWrite(5, LOW);
+  delay(1000) ;
 }
 
 /* blink LED 3 TIMES */
