@@ -2,6 +2,9 @@
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>  //UDP communication with NTP servers
 #include <ESP8266WebServer.h>  //Start a webserver
+#include <IRremoteESP8266.h>
+#include <IRsend.h>  //send IR commands
+
 
 #define LEDON 0x0 // D1 mini clone has LED connected to +ve, define according to behaviour
 #define LEDOFF 0x1
@@ -25,11 +28,16 @@ bool doorClosed = true;  //When the program starts, door must be closed.
 
 ESP8266WebServer server(80);   //Webserver
 
+/*Remote control related */
+IRsend irsend(4);  // An IR LED is controlled by GPIO pin 14 (D5), alternate is 4 (D2)
+uint16_t irData[73] = {9018, 4394,  662, 1656,  636, 548,  638, 548,  660, 524,  636, 548,  664, 524,  636, 548,  636, 548,  638, 1654,  662, 522,  688, 496,  688, 1604,  662, 522,  664, 520,  664, 524,  662, 522,  690, 496,  664, 520,  662, 524,  688, 496,  662, 522,  664, 522,  664, 522,  688, 496,  690, 496,  688, 498,  664, 520,  662, 522,  688, 1602,  690, 496,  662, 1630,  662, 522,  690, 496,  688, 1604,  688, 496,  664};  // TECO 250000901
+
 void setup() {
   Serial.begin(9600);     //Baud rate for Serial monitor
   pinMode(LED_BUILTIN, OUTPUT);  //LED as Output pin which is GPIO2 (D4)
   pinMode(LOCKPIN, OUTPUT);  //GPIO output for door lock
   digitalWrite(LOCKPIN, LOW);  //Make sure that solinoid is not active from the begining
+  irsend.begin();
 
   Serial.println();
   Serial.println();
@@ -84,7 +92,7 @@ void setup() {
 }
 
 void loop() {
-  unsigned long millisec = millis();
+  millisec = millis();
   server.handleClient();                    // Listen for HTTP requests from clients  
   epoch = startepoch + (millisec/1000);
   Serial.printf("%lu ",millisec);
@@ -111,6 +119,19 @@ void releaseDoor(){
   doorClosed = false;   //Status of the door is open
   delay(1000);  //Hold it for a second
   digitalWrite(LOCKPIN, LOW); //Explicitly release it back  
+  offAC();
+}
+
+void offAC(){
+  //irsend.sendRaw(irData,sizeof(irData)/sizeof(irData[0]),38);
+  irsend.sendTeco(0x250000B01);
+  delay(1000);
+  irsend.sendCOOLIX(0xB27BE0);
+  //irsend.sendKelvinator(const unsigned char *data);
+  //irsend.sendKelvinator(0x019B615000200090019B6160008804F1);
+  //irsend.sendNEC(uint64_t data)
+  //irsend.sendCOOLIX(const uint64_t data);
+  //irsend.sendBosch144(const unsigned char *data)
 }
 
 /* blink LED 3 TIMES */
