@@ -9,6 +9,9 @@
 #define LEDON 0x0 // D1 mini clone has LED connected to +ve, define according to behaviour
 #define LEDOFF 0x1
 #define LOCKPIN 5 //GPIO number to which Solinoid lock is connected
+#define CLOSEDFOR 21600000UL //milliseconds upto which the door will remain closed. 21600000UL = 6Hhrs
+#define UTCHOURUPTO 22
+#define UTCMINUTEUPTO 58
 
 /*WiFi credentials*/
 #define ssid "ocean"
@@ -30,7 +33,7 @@ ESP8266WebServer server(80);   //Webserver
 
 /*Remote control related */
 IRsend irsend(4);  // An IR LED is controlled by GPIO pin 14 (D5), alternate is 4 (D2)
-uint16_t irData[73] = {9018, 4394,  662, 1656,  636, 548,  638, 548,  660, 524,  636, 548,  664, 524,  636, 548,  636, 548,  638, 1654,  662, 522,  688, 496,  688, 1604,  662, 522,  664, 520,  664, 524,  662, 522,  690, 496,  664, 520,  662, 524,  688, 496,  662, 522,  664, 522,  664, 522,  688, 496,  690, 496,  688, 498,  664, 520,  662, 522,  688, 1602,  690, 496,  662, 1630,  662, 522,  690, 496,  688, 1604,  688, 496,  664};  // TECO 250000901
+//uint16_t irData[73] = {9018, 4394,  662, 1656,  636, 548,  638, 548,  660, 524,  636, 548,  664, 524,  636, 548,  636, 548,  638, 1654,  662, 522,  688, 496,  688, 1604,  662, 522,  664, 520,  664, 524,  662, 522,  690, 496,  664, 520,  662, 524,  688, 496,  662, 522,  664, 522,  664, 522,  688, 496,  690, 496,  688, 498,  664, 520,  662, 522,  688, 1602,  690, 496,  662, 1630,  662, 522,  690, 496,  688, 1604,  688, 496,  664};  // TECO 250000901
 
 void setup() {
   Serial.begin(9600);     //Baud rate for Serial monitor
@@ -60,6 +63,7 @@ void setup() {
   
   server.on("/", handleRoot);               // Call the 'handleRoot' function when a client requests URI "/"
   server.on("/noblink", noblink);
+  server.on("/check", checkstatus);
   server.onNotFound(handleNotFound);        // When a client requests an unknown URI (i.e. something other than "/"), call function "handleNotFound"
   server.begin();                           // Actually start the server
   Serial.println("HTTP server started");
@@ -97,7 +101,7 @@ void loop() {
   epoch = startepoch + (millisec/1000);
   Serial.printf("%lu ",millisec);
   digitalWrite(LED_BUILTIN, LEDON);
-  if ( doorClosed &&  ( millisec > 14400000UL || ( (epoch % 86400L) / 3600 > 20 && (epoch % 3600) / 60 > 30)))   //Trigger the Door unlock if conditions met 7200000UL=2hrs  10800000UL=3hrs 14400000UL=4hrs
+  if ( doorClosed &&  ( millisec > CLOSEDFOR || ( (epoch % 86400L) / 3600 > UTCHOURUPTO && (epoch % 3600) / 60 > UTCMINUTEUPTO)))   //Trigger the Door unlock if conditions met 7200000UL=2hrs  10800000UL=3hrs 14400000UL=4hrs  21600000UL = 6Hhrs
     {
       releaseDoor();
     }
@@ -181,4 +185,14 @@ void handleNotFound(){
 
 void noblink(){  //Stop the notification of door opening by setting it as doorClosed
   doorClosed = true;
+  server.send(200, "text/plain", "Ending pulse blink");
+}
+
+void checkstatus(){
+  String str;
+  str = "Time remaining :" + String(((CLOSEDFOR -  millisec)/1000) % 86400L / 3600 ) + " Hours and " + String((((CLOSEDFOR -  millisec)/1000) % 3600) / 60) + " Minutes \n";
+  str += "Current Epoch is: " + String(epoch) + "\n";
+  Serial.printf("\nHour %lu \n",(epoch % 86400L) / 3600);
+  str += "Open time specified : " + String(UTCHOURUPTO) + ":" + String(UTCMINUTEUPTO) + " UTC, Now it is :" + String((epoch % 86400L) / 3600) + ":" + String((epoch % 3600) / 60) + " UTC\n";
+  server.send(200,"text/plain",str);
 }
