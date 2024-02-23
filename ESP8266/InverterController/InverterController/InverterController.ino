@@ -15,14 +15,18 @@ using namespace std;
 /*WiFi credentials*/
 #define ssid "ocean"
 #define password "20010604"
-const char* apiURL = "/macros/s/AKfycbwNhKo1tLQVTMt_UgvkwDQYg8n9bMTByq5WlNAPc6QHVNFshR4gSqTRmnzACF3tjvDq8w/exec";
+//const char* apiURL = "/macros/s/AKfycbwNhKo1tLQVTMt_UgvkwDQYg8n9bMTByq5WlNAPc6QHVNFshR4gSqTRmnzACF3tjvDq8w/exec";  //--APIv3
+const char* apiURL = "/macros/s/AKfycbwRcAb0-1mbDtH8b0w4-32zdNcS6t5wdM-qtMfpTkQAl-AU0uZVyHicoXirVuLp_AP1WA/exec";  //--APIV4
 
-int BattVolt = 0;  // Curren tBattery voltage, Variable to store Output of ADC 
-int MainsState = 0; // Mains supply status, By deafult, Mains is there
-int PrevBattVolt = 0;  //Previous Known battery voltage
-int PrevMainsState = 0;  //Previous Known Mains status
 int loopCnt=0;
+int BattVolt = 0;  // Curren tBattery voltage, Variable to store Output of ADC 
+int MainsState = 0; // Mains supply status, By deafult, Mains is there "0", "1" means power went
+int PrevBattVolt = 0;  //Previous Known battery voltage in ADC. So integer
+int PrevMainsState = 0;  //Previous Known Mains status, 0 = Mains available 1 = Mains gone
 double TrgrVolt=14;
+bool invPwerOn = true;  //Switch on the inverter if power goes
+bool batChrgOn = false; //Charge battery from mains.
+
 
 BearSSL::WiFiClientSecure client;
 HTTPClient https;
@@ -63,11 +67,36 @@ void setup()
   blink();
 }
 
+//Take Readings and decide whether to switch on / off the inverter
+void checkMainsnVoltage(){
+  BattVolt = analogRead(analogPin); // Read the Analog Input value for checking the battery voltage
+  MainsState = digitalRead(MAINSPIN);  //Check the mains status
+  if(invPwerOn && (MainsState == 1 || BattVolt > 66.7*TrgrVolt )){  //inverter can be switched on, Then power goes or battery volage increases
+    //INVERTER
+    digitalWrite(INVERTER,HIGH); //Switchon inverter
+    blink(4,100);
+    delay(3500);//Wait for  3.5 seconds for inverter to startup
+    blink(4,100);
+    digitalWrite(SWITCHOVER,PWRON); //Switchover to inverter
+  }else if ( BattVolt < 66.7*13.2 ) { //Power is available
+    digitalWrite(SWITCHOVER,PWROFF); //Switchover to mains
+    blink(4,100);
+    digitalWrite(INVERTER, LOW); //Switch-off Inverter
+  }
+}
+
+void chargeInveter(){
+  if (batChrgOn) digitalWrite(INVCHARGE, HIGH);
+  else digitalWrite(INVCHARGE, LOW);
+}
+
 void loop()
 {
   loopCnt++;
-  BattVolt = analogRead(analogPin); // Read the Analog Input value for checking the battery voltage
-  MainsState = digitalRead(MAINSPIN);  //Check the mains status
+  checkMainsnVoltage();  //The main function to trigger the inveter
+  chargeInveter(); //Decide whether to charge the battery using inverter
+  Serial.printf("GLOBAL invPwerOn : %s , batChrgOn : %s , TrgrVolt : %f \n", invPwerOn ? "true" : "false",batChrgOn ? "true" : "false",TrgrVolt);
+  Serial.printf("Current Batt Volt = %f, Mains is %s \n",BattVolt/66.7, MainsState == 0 ? "Available" : "Not Available");
   if ( abs(PrevBattVolt - BattVolt) > 5 ){
     updateBattVoltage(BattVolt);
     loopCnt=1;
@@ -81,29 +110,22 @@ void loop()
     getAPIupdates();
   }
 
-  Serial.printf("Current Trigger voltage :%lf",TrgrVolt);
-
-  /* Print the output in the Serial Monitor */
-  Serial.print("ADC Value = ");
-  Serial.println(BattVolt);
-  Serial.printf("Mains is %d ",MainsState);
   delay(2000);
-  digitalWrite(SWITCHOVER,PWRON);
-  digitalWrite(INVERTER,HIGH);
-  digitalWrite(INVCHARGE, HIGH);
+
   delay(500);
   //wifi_fpm_do_sleep(10000);
-  digitalWrite(SWITCHOVER,PWROFF);
-  digitalWrite(INVERTER, LOW);
-  digitalWrite(INVCHARGE, LOW);
+  
+
   blink(3,100);
+int loopCnt=0;
 }
 
 int updateBattVoltage(int volt){
  PrevBattVolt=volt;
  //Item=2, Status=volt, Write
  char buffer[10];
- sprintf(buffer,"%.1f",volt);
+ sprintf(buffer,"%.1f",volt/66.7);
+ Serial.printf("updateBattVoltage is called with VoltADC:%d and calculated voltage is %s",volt,buffer);
  communicateToAPI(2,buffer,'W');
  return 0;
 }
@@ -150,7 +172,8 @@ int communicateToAPI(int item,const char * stat,char RW){
             return -1;
           }
           TrgrVolt = jdoc["TrgrVolt"];
-          Serial.printf("Updated Trigger voltage :%lf",TrgrVolt);
+          invPwerOn = (jdoc["inv"] == "ON") ? true : false;
+          batChrgOn = (jdoc["batChrg"] == "ON") ? true : false;
         }
       } else {
         Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
