@@ -19,6 +19,7 @@ using namespace std;
 const char* apiURL = "/macros/s/AKfycbwRcAb0-1mbDtH8b0w4-32zdNcS6t5wdM-qtMfpTkQAl-AU0uZVyHicoXirVuLp_AP1WA/exec";  //--APIV4
 
 int loopCnt=0;
+int strtLoop = -200;
 int BattVolt = 0;  // Curren tBattery voltage, Variable to store Output of ADC 
 int MainsState = 0; // Mains supply status, By deafult, Mains is there "0", "1" means power went
 int PrevBattVolt = 0;  //Previous Known battery voltage in ADC. So integer
@@ -72,16 +73,18 @@ void checkMainsnVoltage(){
   BattVolt = analogRead(analogPin); // Read the Analog Input value for checking the battery voltage
   MainsState = digitalRead(MAINSPIN);  //Check the mains status
   if(invPwerOn && (MainsState == 1 || BattVolt > 66.7*TrgrVolt )){  //inverter can be switched on, Then power goes or battery volage increases
-    //INVERTER
+    if (BattVolt > 66.7*TrgrVolt) strtLoop = loopCnt;
     digitalWrite(INVERTER,HIGH); //Switchon inverter
     blink(4,100);
     delay(3500);//Wait for  3.5 seconds for inverter to startup
     blink(4,100);
     digitalWrite(SWITCHOVER,PWRON); //Switchover to inverter
-  }else if ( BattVolt < 66.7*13.2 ) { //Power is available
+  }else if ( loopCnt-strtLoop > 200 && BattVolt < 66.7*13.2 ) { //Power is available
     digitalWrite(SWITCHOVER,PWROFF); //Switchover to mains
-    blink(4,100);
+    blink(1,100);
     digitalWrite(INVERTER, LOW); //Switch-off Inverter
+  }else{
+    printf("Inverter off %d loop away\n", 200 - (loopCnt-strtLoop));
   }
 }
 
@@ -99,25 +102,18 @@ void loop()
   Serial.printf("Current Batt Volt = %f, Mains is %s \n",BattVolt/66.7, MainsState == 0 ? "Available" : "Not Available");
   if ( abs(PrevBattVolt - BattVolt) > 5 ){
     updateBattVoltage(BattVolt);
-    loopCnt=1;
   }
   if (PrevMainsState != MainsState) {
     updateMainsState(MainsState);
-    loopCnt=1;
   }
   if (loopCnt % 10 == 0){
     Serial.println("Getting Status using API");
     getAPIupdates();
   }
 
-  delay(2000);
-
-  delay(500);
+  delay(2700);
   //wifi_fpm_do_sleep(10000);
-  
-
-  blink(3,100);
-int loopCnt=0;
+  blink(1,100);
 }
 
 int updateBattVoltage(int volt){
